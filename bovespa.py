@@ -17,36 +17,46 @@ logger = logging.getLogger(__name__)
 #    value = tickerData.info['ask']
 #    return value
 
-def get_values(ticker, exact=True):
+def get_values(tickers, exact=True):
     """
     Pega valores das acoes e opcoes
     Pode retronar mais de uma linha com nomes parecidos
 
     exact=True: quando true retorna somente ticker exatamente iguais
     """
-    url = "http://www.tradergrafico.com/ajuda/ajuda.asp?pesq=" + ticker
-    fp = urllib.request.urlopen(url)
-    mybytes = fp.read()
-    mystr = mybytes.decode('iso-8859-1')
-    fp.close()
 
-    start_string = '<h3>Cota&ccedil;&otilde;es</h3>'
-    start = mystr.rfind(start_string)
-    start = start + len(start_string)
-    end_string = '</TABLE>'
-    end = mystr.rfind(end_string) + len(end_string)
-    table = mystr[start:end]
+    if isinstance(tickers, str):
+        tickers = [tickers]
 
-    df = pd.read_html(table, header=0, decimal=',', thousands='.')[0]
+    df_out = pd.DataFrame()
+    if isinstance(tickers, list):
+        for ticker in tickers:
+            url = "http://www.tradergrafico.com/ajuda/ajuda.asp?pesq=" + ticker
+            fp = urllib.request.urlopen(url)
+            mybytes = fp.read()
+            mystr = mybytes.decode('iso-8859-1')
+            fp.close()
 
-    if not exact:
-        return df
-    
-    df = df.loc[df['Papel']==ticker]
-    return df
+            start_string = '<h3>Cota&ccedil;&otilde;es</h3>'
+            start = mystr.rfind(start_string)
+            start = start + len(start_string)
+            end_string = '</TABLE>'
+            end = mystr.rfind(end_string) + len(end_string)
+            table = mystr[start:end]
+
+            df = pd.read_html(table, header=0, decimal=',', thousands='.')[0]
+
+            # Pega somente papel exatamente com mesmo nome
+            if exact:
+                df = df.loc[df['Papel']==ticker]
+            
+            # Retorna qualquer coisa parecida
+            df_out = pd.concat([df_out, df], axis=0)
+            
+    return df_out
 
 
-def process(acao, opcao, filter_type=True, filter_date=None):
+def process(acao, opcao, expiration_lookup_table, filter_type=True, filter_date=None):
     """
     processa acao e opcao e verificando data, tipo e calcula o lucro
     """
@@ -64,7 +74,8 @@ def process(acao, opcao, filter_type=True, filter_date=None):
     tipo_acao = find_type(descricao_acao)
     #descricao_acao[1]
 
-    df = pd.DataFrame(columns=['acao', 'tipo acao', 'valor acao','opcao', 'tipo_opcao', 'data negociacao', 'valor opcao','strike', 'volume', 'lucro %'])
+    df = pd.DataFrame(columns=['acao', 'tipo acao', 'valor acao','opcao', 'tipo_opcao', 'data negociacao', 
+        'valor opcao','strike', 'data expiracao', 'volume', 'lucro %', 'lucro aa'])
     for index, row in opcao.iterrows():
         nome_opcao = row['Papel']
         descricao_opcao = row['Descrição'].split()
@@ -87,17 +98,29 @@ def process(acao, opcao, filter_type=True, filter_date=None):
                 logger.debug('Ignorando opcao {} {} devido data antiga'.format(nome_opcao,' '.join(descricao_opcao)))
                 continue
 
-
+        data_expiracao = option_expiration(nome_opcao, expiration_lookup_table)
         valor_opcao = row['Último']        
         volume_opcao = float(re.sub('\D','',row['R$']))
         if strike_opcao >= valor_acao:
             lucro = valor_opcao
         else:
             lucro = strike_opcao - valor_acao + valor_opcao
+        
+        delta_days = data_expiracao.date() - datetime.today().date()
+        delta_days = delta_days.days
         p_lucro = (lucro / valor_acao) * 100
+
+        lucro_aa = p_lucro * 365/delta_days
 
         #df = pd.DataFrame({'acao':[nome_acao], 'valor acao':[valor_acao], 'opcao':[nome_opcao], 'valor opcao':[valor_opcao],                    'strike':strike_opcao, 'lucro %':p_lucro})
         df.loc[index] = [nome_acao + ' ' + ' '.join(descricao_acao), tipo_acao, valor_acao, nome_opcao + ' ' + ' '.join(descricao_opcao), tipo_opcao, 
-            data.strftime('%d/%m'), valor_opcao,strike_opcao, volume_opcao, p_lucro]
+            data.strftime('%d/%m'), valor_opcao, strike_opcao, data_expiracao.strftime('%d/%m'), volume_opcao, p_lucro, lucro_aa]
  
     return df
+
+
+def option_expiration(option, expiration_lookup_table):
+    for c in reversed(option):
+        if c.isdigit():
+            continue
+        return(expiration_lookup_table[c])
