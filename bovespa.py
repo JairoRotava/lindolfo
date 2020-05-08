@@ -4,6 +4,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 import re
 import logging
+import yfinance as yf
+import bovespa
+import mplfinance as mpf
+import ipywidgets as widgets
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +128,31 @@ def option_expiration(option, expiration_lookup_table):
         if c.isdigit():
             continue
         return(expiration_lookup_table[c])
+
+def show_all(papel_acao, papel_opcao, tabela_vencimento_opcao):
+    hoje = datetime.today()
+    data_negociacao = hoje
+    acao = get_values(papel_acao)
+    opcao = get_values(papel_opcao, exact=False)
+    aval_opcoes = process(acao, opcao, tabela_vencimento_opcao, filter_date = data_negociacao)
+    opcoes_ordenadas_lucro = aval_opcoes.sort_values('lucro aa', ascending=False)
+    ticker = yf.Ticker( papel_acao + '.SA')
+    hist = ticker.history(period='3mo')
+    intraday = ticker.history(period='1d', interval='5m')
+
+    widget1 = widgets.Output()
+    widget2 = widgets.Output()
+    widget3 = widgets.Output()
+
+    with widget1:
+        mpf.plot(hist, type ='candle', style='charles', mav=(3,6,9), volume=True)
+    with widget2:
+        display(opcoes_ordenadas_lucro[:10])
+    with widget3:
+        # Pega ultimas 10 leituras
+        display(intraday.tail(10)[::-1])
+
+    # Coloca grafico lado a lado com ultimas cotacoes
+    view = widgets.HBox([widget1, widget3])
+    view_all = widgets.VBox([view, widget2])
+    return view_all
