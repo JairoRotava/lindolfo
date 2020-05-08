@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import re
 import logging
 import yfinance as yf
-import bovespa
+#import bovespa
 import mplfinance as mpf
 import ipywidgets as widgets
 
@@ -129,7 +129,7 @@ def option_expiration(option, expiration_lookup_table):
             continue
         return(expiration_lookup_table[c])
 
-def show_all(papel_acao, papel_opcao, tabela_vencimento_opcao):
+def show_all(papel_acao, papel_opcao, tabela_vencimento_opcao, periodo_grafico = '1mo'):
     hoje = datetime.today()
     data_negociacao = hoje
     acao = get_values(papel_acao)
@@ -137,8 +137,20 @@ def show_all(papel_acao, papel_opcao, tabela_vencimento_opcao):
     aval_opcoes = process(acao, opcao, tabela_vencimento_opcao, filter_date = data_negociacao)
     opcoes_ordenadas_lucro = aval_opcoes.sort_values('lucro aa', ascending=False)
     ticker = yf.Ticker( papel_acao + '.SA')
-    hist = ticker.history(period='3mo')
-    intraday = ticker.history(period='1d', interval='5m')
+    hist = ticker.history(period=periodo_grafico)
+    
+   
+    info = ticker.info
+    #print(type(info))
+    keys = ['symbol','bid','ask','previousClose','open','regularMarketDayHigh','regularMarketDayLow','averageDailyVolume10Day',
+            'fiftyDayAverage','volume','fiftyTwoWeekHigh','fiftyTwoWeekLow']
+    status = {key: info[key] for key in keys}
+    
+    #[['previousClose','regularMarketDayHigh','averageDailyVolume10Day','regularMarketPreviousClose',
+    #        'fiftyDayAverage','open','regularMarketDayLow','dayLow','volume','fiftyTwoWeekHigh','fiftyTwoWeekLow',
+    #        'bid','dayHigh','symbol','regularMarketPrice']]
+    #intraday = ticker.history(period='1d', interval='5m')
+
 
     widget1 = widgets.Output()
     widget2 = widgets.Output()
@@ -150,7 +162,8 @@ def show_all(papel_acao, papel_opcao, tabela_vencimento_opcao):
         display(opcoes_ordenadas_lucro[:10])
     with widget3:
         # Pega ultimas 10 leituras
-        display(intraday.tail(10)[::-1])
+        #display(intraday.tail(10)[::-1])
+        display(status)
 
     # Coloca grafico lado a lado com ultimas cotacoes
     view = widgets.HBox([widget1, widget3])
